@@ -1,0 +1,327 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans 
+	http://www.springframework.org/schema/beans/spring-beans-2.5.xsd">
+
+
+	<!-- 过滤链, 按顺序来调用里面的各个过滤器 -->
+	<bean id="filterChainProxy"
+		class="org.acegisecurity.util.FilterChainProxy">
+		<property name="filterInvocationDefinitionSource">
+			<value>
+				CONVERT_URL_TO_LOWERCASE_BEFORE_COMPARISON
+				PATTERN_TYPE_APACHE_ANT 
+				/css/**=#NONE# 
+				/js/**=#NONE#
+				/images/**=#NONE#
+				 /tags/**=#NONE#
+				 /*.action
+				/**=concurrentSessionFilter,httpSessionContextIntegrationFilter,logoutFilter,authenticationProcessingFilter,anonymousProcessingFilter,exceptionTranslationFilter,filterInvocationInterceptor
+			</value>
+		</property>
+	</bean>
+
+	<!-- 国际化，  -->
+	<bean id="messageSource"
+		class="org.springframework.context.support.ResourceBundleMessageSource">
+		<property name="basename">
+			<value>org/acegisecurity/messages_zh_CN</value>
+		</property>
+	</bean>
+
+	<!-- 并发过滤器, 它起到两个作用:
+		第一、对每个请求, 它都会调用org.acegisecurity.concurrent.SessionRegistry.refreshLastRequest(String)方法, 
+		这样保证所有已注册的会话总是有正确的最后修改时间。
+		第二、它会从SessionRegistry为每个请求返回org.acegisecurity.concurrent.SessionInformation对象，并且检查session
+		是否已标记为过期。如果已标记为过期，那么该session将会被invalidate()掉。		
+	-->
+	<bean id="concurrentSessionFilter"
+		class="com.lavakn.acegi.filter.ConcurrentSessionFilter">
+		<property name="sessionRegistry" ref="sessionRegistry"></property>
+		<property name="expiredUrl">
+			<value>/concurrentError.jsp</value>
+		</property>
+	</bean>
+
+	<!-- 增加 -->
+	<bean id="sessionRegistry"
+		class="org.acegisecurity.concurrent.SessionRegistryImpl">
+	</bean>
+
+	<!-- 增加 -->
+	<bean id="concurrentSessionController"
+		class="org.acegisecurity.concurrent.ConcurrentSessionControllerImpl">
+		<property name="maximumSessions" value="1"></property>
+		<property name="sessionRegistry" ref="sessionRegistry"></property>
+		<!-- 
+			一般设置为false. 为true时, 如果已有一个该用户登录了, 那么在另一个地方登录该用户将抛出异常
+			如果设置为false, 那么, 如果已有一个该用户登录了系统, 那么在另一个地方也可以登录, 登录后前者会被逼退出系统
+		-->
+		<property name="exceptionIfMaximumExceeded" value="true"></property>
+	</bean>
+	<!-- 调用拦截器 -->
+	<bean id="httpSessionContextIntegrationFilter"
+		class="org.acegisecurity.context.HttpSessionContextIntegrationFilter">
+	</bean>
+	<!-- 推出过滤器 -->
+	<bean id="logoutFilter"
+		class="org.acegisecurity.ui.logout.LogoutFilter">
+		<constructor-arg value="/login.jsp" />
+		<!-- URL redirected to after logout -->
+		<constructor-arg>
+			<list>
+				<bean
+					class="org.acegisecurity.ui.logout.SecurityContextLogoutHandler" />
+			</list>
+		</constructor-arg>
+	</bean>
+	<!-- 处理认证请求（通常是一个登录页面的表单请求）。当身份验证成功时，AuthenticationProcessingFilter会在会话中放置一个Authentication对象，并且重定向到登录成功页面
+		
+		l         authenticationFailureUrl定义登陆失败时转向的页面
+		
+		l         defaultTargetUrl定义登陆成功时转向的页面
+		
+		l         filterProcessesUrl定义登陆请求的页面，该过滤器拦截的url，通常/j_acegi_security_check，和登录页面（login.jsp）的登录表单的action相
+		
+		同
+		
+		l         rememberMeServices用于在验证成功后添加cookie信息 -->
+	<bean id="authenticationProcessingFilter"
+		class="org.acegisecurity.ui.webapp.AuthenticationProcessingFilter">
+		<property name="authenticationManager"
+			ref="authenticationManager" />
+		<property name="authenticationFailureUrl"
+			value="/login.jsp?login_error=1" /><!-- 认证失败页面 -->
+		<property name="defaultTargetUrl"
+			value="/authenticate/index.jsp" /><!-- 成功登录页面 -->
+		<property name="filterProcessesUrl"
+			value="/j_acegi_security_check" />
+	</bean>
+	<!-- 增加匿名用户过滤器 -->
+	<bean id="anonymousProcessingFilter"
+		class="org.acegisecurity.providers.anonymous.AnonymousProcessingFilter">
+		<property name="key" value="changeThis" />
+		<property name="userAttribute"
+			value="anonymousUser,ROLE_ANONYMOUS" />
+	</bean>
+
+	<!-- 安全验证管理器 -->
+	<bean id="authenticationManager"
+		class="org.acegisecurity.providers.ProviderManager">
+		<property name="providers">
+			<list>
+				<ref local="daoAuthenticationProvider" />
+				<bean
+					class="org.acegisecurity.providers.anonymous.AnonymousAuthenticationProvider">
+					<property name="key" value="changeThis" />
+				</bean>
+			</list>
+		</property>
+		<property name="sessionController"
+			ref="concurrentSessionController">
+		</property>
+	</bean>
+	<!--  dao验证提供者 -->
+	<bean id="daoAuthenticationProvider"
+		class="org.acegisecurity.providers.dao.DaoAuthenticationProvider">
+		<property name="userDetailsService"
+			ref="acegiDetailsServiceImpl" />
+		<!-- 增加 -->
+		<property name="userCache" ref="userCache" />
+		<!-- <property name="passwordEncoder" ref="md5PasswordEncoder" /> -->
+	</bean>
+
+	<!-- 
+		<bean id="inMemDaoImpl"
+		class="org.acegisecurity.userdetails.memory.InMemoryDaoImpl">
+		修改: 不使用userMap, 而使用userProperties 
+		<property name="userMap">
+		<value>
+		javaee=password,ROLE_SUPERVISOR sam=password,ROLE_USER
+		huawei=password,ROLE_USER
+		qiuzj=password,ROLE_SUPERVISOR,disabled 
+		</value>
+		</property>
+		</bean>
+	-->
+
+	<!-- 增加. 以下两种配法等效 -->
+	<bean id="md5PasswordEncoder"
+		class="org.acegisecurity.providers.encoding.Md5PasswordEncoder">
+		<property name="encodeHashAsBase64" value="false"></property>
+	</bean>
+	<!--
+		<bean id="md5MessageDigestPasswordEncoder" class="org.acegisecurity.providers.encoding.MessageDigestPasswordEncoder">
+		<constructor-arg><value>MD5</value></constructor-arg>
+		<property name="encodeHashAsBase64" value="false"></property>
+		</bean>-->
+
+	<bean id="exceptionTranslationFilter"
+		class="org.acegisecurity.ui.ExceptionTranslationFilter">
+		<!-- 尚未登录, 进入非法(未认证不可访问)区域 -->
+		<property name="authenticationEntryPoint">
+			<bean
+				class="org.acegisecurity.ui.webapp.AuthenticationProcessingFilterEntryPoint">
+				<property name="loginFormUrl" value="/login.jsp" />
+				<property name="forceHttps" value="false" />
+			</bean>
+		</property>
+		<!-- 登录后, 进入非授权区域 -->
+		<property name="accessDeniedHandler">
+			<bean
+				class="org.acegisecurity.ui.AccessDeniedHandlerImpl">
+				<property name="errorPage" value="/accessDenied.jsp" />
+			</bean>
+		</property>
+	</bean>
+
+	<bean id="filterInvocationInterceptor"
+		class="org.acegisecurity.intercept.web.FilterSecurityInterceptor">
+		<property name="authenticationManager"
+			ref="authenticationManager" />
+		<property name="accessDecisionManager"
+			ref="accessDecisionManager" />
+		<property name="objectDefinitionSource">
+			<ref local="objectDefinitionSource" />
+		</property>
+	</bean>
+	<!-- 资源 -->
+	<bean id="objectDefinitionSource"
+		class="com.lavakn.acegi.intercept.CacheObjectDefinitionSource">
+		<property name="convertUrlToLowercaseBeforeComparison"
+			value="true" />
+		<property name="useAntPath" value="true" />
+		<property name="protectAllResource" value="false" />
+		<property name="resourceServiceManager"
+			ref="resourceServiceManager">
+		</property>
+	</bean>
+
+
+	<!-- 投票策略-->
+	<bean id="accessDecisionManager"
+		class="org.acegisecurity.vote.AffirmativeBased">
+		<property name="decisionVoters">
+			<list>
+				<bean class="org.acegisecurity.vote.RoleVoter" />
+			</list>
+		</property>
+	</bean>
+
+
+
+	<!-- EhCacheBasedUserCache是EhCache的一个缓存实现，提供了向缓存中放入、取得和删除用户明细信息的功能，Acegi需要用它来管理缓存
+		<bean id="userCache"
+		class="org.acegisecurity.providers.dao.cache.EhCacheBasedUserCache">
+		<property name="cache" ref="userCacheBackend" />
+		</bean>
+	-->
+	<!-- EhCacheFactoryBean是用于维护Cache实例的工厂Bean，Cache需要依赖于CacheManager而存在 
+		<bean id="userCacheBackend"
+		class="org.springframework.cache.ehcache.EhCacheFactoryBean">
+		<property name="cacheManager" ref="cacheManager"></property>
+		<property name="cacheName" value="userCache"></property>
+		</bean>
+	-->
+	<!-- 用户缓存 -->
+	<bean name="userCache"
+		class="com.lavakn.acegi.cache.EhCacheBasedUserCache">
+		<property name="cache">
+			<bean
+				class="org.springframework.cache.ehcache.EhCacheFactoryBean"
+				autowire="byName">
+				<property name="cacheManager" ref="cacheManager" />
+				<property name="cacheName" value="userCache" />
+			</bean>
+		</property>
+	</bean>
+	<!-- 资源缓存 -->
+	<bean id="resourceCache"
+		class="com.lavakn.acegi.cache.ResourceCache">
+		<property name="cache">
+			<bean id="resourceCacheBackend"
+				class="org.springframework.cache.ehcache.EhCacheFactoryBean">
+				<property name="cacheManager" ref="cacheManager" />
+				<property name="cacheName" value="resourceCache" />
+			</bean>
+		</property>
+	</bean>
+
+	<bean id="resourceServiceManager"
+		class="com.lavakn.acegi.service.AcegiResourceService">
+		<property name="resourceCache" ref="resourceCache"></property>
+		<property name="resourceSerivce" ref="resourceSerivce"></property>
+	</bean>
+
+
+
+	<bean id="methodSecurityInterceptor"
+		class="org.acegisecurity.intercept.method.aopalliance.MethodSecurityInterceptor">
+		<property name="authenticationManager"
+			ref="authenticationManager" />
+		<property name="accessDecisionManager">
+			<ref local="accessDecisionManager" />
+		</property>
+		<property name="objectDefinitionSource" ref="methodDefinitionSource">
+		</property>
+	</bean>
+
+		<bean id="methodDefinitionSource" class="com.lavakn.acegi.intercept.CacheMethodDefinitionSource">
+		<property name="resourceServiceManager" ref="resourceServiceManager"></property>
+		<property name="protectAllResource" value="false" ></property>
+		</bean>
+	
+	<!-- com.lavakn.acegi.test.TestInterface.Add=ROLE_SUPERVISOR
+				com.lavakn.acegi.test.TestInterface.update=ROLE_SUPERVISOR
+				com.lavakn.acegi.test.TestInterface.get=ROLE_SUPERVISOR
+				com.lavakn.acegi.test.TestInterface.remove=ROLE_SUPERVISOR
+				com.lavakn.acegi.test.TestInterface.getAll=ROLE_SUPERVISOR -->
+	<bean id="contactManager"
+		class="com.lavakn.acegi.test.TestInterfaceImpl" autowire="byName">
+	</bean>
+
+	<bean id="autoProxyCreator"
+		class="org.springframework.aop.framework.autoproxy.BeanNameAutoProxyCreator">
+		<property name="interceptorNames">
+			<list>
+				<value>methodSecurityInterceptor</value>
+			</list>
+		</property>
+		<property name="beanNames">
+			<list>
+				<!--  需要保护的方法,在方法中用注释@Transactional(readOnly=true) 
+					@Secured({"ROLE_MANAGER"}) 
+				-->
+				<value>contactManager</value>
+			</list>
+		</property>
+		<!--property name="proxyTargetClass" value="true"/-->
+	</bean>
+	<!--	<bean id="contactManagerSecurity"    
+		class="org.acegisecurity.intercept.method.aopalliance.MethodSecurityInterceptor">  
+		<property name="authenticationManager" ref="authenticationManager" />  
+		<property name="accessDecisionManager" ref="accessDecisionManager" />  
+		<property name="objectDefinitionSource" ref="methodDefinitionSource" />  
+		</bean>
+		
+		<bean id="methodDefinitionSource"
+		class="com.lavakn.acegi.intercept.CacheBaseMethodDefinitionSource">
+		<property name="resourceServiceManager" ref="resourceServiceManager" />
+		<property name="protectAllResource" value="false" />
+		</bean> -->
+
+	<!-- 缓存管理器，一个CacheManager能够创建和维护多个Cache实例 -->
+	<bean id="cacheManager"
+		class="org.springframework.cache.ehcache.EhCacheManagerFactoryBean">
+		<property name="configLocation">
+			<value>classpath:ehcache.xml</value>
+		</property>
+	</bean>
+
+	<!-- 认证和授权日志监听器 -->
+	<bean id="authenticationLoggerListener"
+		class="org.acegisecurity.event.authentication.LoggerListener" />
+	<bean id="authorizationLoggerListener"
+		class="org.acegisecurity.event.authorization.LoggerListener" />
+</beans>

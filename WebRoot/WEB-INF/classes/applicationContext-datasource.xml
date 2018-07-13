@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans 
+	http://www.springframework.org/schema/beans/spring-beans-2.5.xsd">
+	
+	<bean id="dataSource"
+		class="com.mchange.v2.c3p0.ComboPooledDataSource"
+		destroy-method="close">
+		<property name="properties">
+			<props>
+				<!--<prop key="hibernate.hbm2ddl.auto">update</prop>  -->
+				<prop key="c3p0.minPoolSize">1</prop>
+				<prop key="hc3p0.maxPoolSize">50</prop>
+				<prop key="hc3p0.timeout">30</prop>
+				<prop key="c3p0.max_statement">50</prop>
+				<prop key="acquireRetryAttempts">0</prop>
+				<prop key="acquireRetryDelay">1000</prop>
+			</props>
+		</property>
+		<property name="driverClass"
+			value="oracle.jdbc.driver.OracleDriver" />
+		<property name="jdbcUrl"
+			value="jdbc:oracle:thin:@127.0.0.1:1521:orac" />
+		<property name="user" value="huawei" />
+		<property name="password" value="huawei" />
+	</bean>
+
+
+	<bean id="sessionFactory"
+		class="org.springframework.orm.hibernate3.LocalSessionFactoryBean">
+		<property name="dataSource">
+			<ref local="dataSource" />
+		</property>
+		<property name="hibernateProperties" ref="hibernateProperties">	
+		</property>
+		<property name="mappingResources">
+			<list>
+				<value>
+					com/lavakn/acegi/model/TabResource.hbm.xml
+				</value>
+				<value>com/lavakn/acegi/model/TabUsers.hbm.xml</value>
+				<value>com/lavakn/acegi/model/TabRoles.hbm.xml</value>
+			</list>
+		</property>
+	</bean>
+
+	<bean id="hibernateProperties"
+		class="org.springframework.beans.factory.config.PropertiesFactoryBean">
+		<property name="properties">
+			<props>
+				<prop key="hibernate.dialect">
+					<![CDATA[org.hibernate.dialect.OracleDialect]]>
+				</prop>
+				<prop key="hibernate.show_sql">true</prop>
+				<prop key="hibernate.format_sql">true</prop>
+				 <prop key="hibernate.query.factory_class">
+					org.hibernate.hql.classic.ClassicQueryTranslatorFactory
+				</prop>
+				<prop key="hibernate.connection.release_mode">
+					after_transaction
+				</prop> 
+			</props>
+		</property>
+	</bean>
+
+	<!--   定义事务管理器，使用适用于Hibernte的事务管理器-->
+	<bean id="transactionManager"
+		class="org.springframework.orm.hibernate3.HibernateTransactionManager">
+		<!--   HibernateTransactionManager   bean需要依赖注入一个SessionFactory bean的引用-->
+		<property name="sessionFactory">
+			<ref local="sessionFactory" />
+		</property>
+	</bean>
+
+
+	<!--   配置事务拦截器-->
+	<bean id="transactionInterceptor"
+		class="org.springframework.transaction.interceptor.TransactionInterceptor">
+		<!--   事务拦截器bean需要依赖注入一个事务管理器 -->
+		<property name="transactionManager" ref="transactionManager" />
+		<property name="transactionAttributes">
+			<!--   下面定义事务传播属性-->
+			<props>
+				<prop key="get*">PROPAGATION_SUPPORTS,readOnly</prop>
+				<prop key="find*">PROPAGATION_SUPPORTS,readOnly</prop>
+				<prop key="select*">PROPAGATION_SUPPORTS,readOnly</prop>
+				<prop key="query*">PROPAGATION_SUPPORTS,readOnly</prop>
+				<prop key="create*">PROPAGATION_REQUIRED</prop>
+				<prop key="update*">PROPAGATION_REQUIRED</prop>
+				<prop key="remove*">PROPAGATION_REQUIRED</prop>
+				<prop key="delete*">PROPAGATION_REQUIRED</prop>
+				<prop key="confirm*">PROPAGATION_REQUIRED</prop>
+				<prop key="add*">PROPAGATION_REQUIRED</prop>
+			</props>
+		</property>
+	</bean>
+	
+	<!-- 定义BeanNameAutoProxyCreator,该bean是个bean后处理器，无需被引用，因此没有id属性 
+		这个bean后处理器，根据事务拦截器为目标bean自动创建事务代理 指定对满足哪些bean name的bean自动生成业务代理 -->
+	<bean
+		class="org.springframework.aop.framework.autoproxy.BeanNameAutoProxyCreator">
+		<property name="beanNames">
+			<!--   下面是所有需要自动创建事务代理的bean-->
+			<list>
+				<value>*Service</value>
+			</list>
+			<!--   此处可增加其他需要自动创建事务代理的bean-->
+		</property>
+		<!--   下面定义BeanNameAutoProxyCreator所需的事务拦截器-->
+		<property name="interceptorNames">
+			<list>
+				<value>transactionInterceptor</value>
+				<!-- 此处可增加其他新的Interceptor -->
+				<!-- contactManagerSecurity -->
+			</list>
+		</property>
+	</bean>
+</beans>
